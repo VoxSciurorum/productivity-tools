@@ -9,7 +9,7 @@
 // Hooks for handling reducer hyperobjects.
 
 static void reducer_register(const csi_id_t call_id, unsigned MAAP_count,
-                             void *key, void *identity_ptr, void *reduce_ptr) {
+                             void *key, void (*reduce)(void *, void *)) {
   for (unsigned i = 0; i < MAAP_count; ++i)
     MAAPs.pop();
 
@@ -17,7 +17,7 @@ static void reducer_register(const csi_id_t call_id, unsigned MAAP_count,
     hyper_table *reducer_views = CilkSanImpl.get_or_create_reducer_views();
     reducer_views->insert((hyper_table::bucket){
         .key = (uintptr_t)key,
-        .value = {.view = key, .reduce_fn = (__cilk_reduce_fn)reduce_ptr}});
+        .value = {.view = key, .reduce_fn = reduce}});
     DBG_TRACE(REDUCER,
               "reducer_register: registered %p, reducer_views %p, occupancy %d\n",
               key, reducer_views, reducer_views->occupancy);
@@ -31,23 +31,12 @@ static void reducer_register(const csi_id_t call_id, unsigned MAAP_count,
 }
 
 CILKSAN_API void
-__csan_llvm_reducer_register_i32(const csi_id_t call_id, const csi_id_t func_id,
-                                 unsigned MAAP_count, const call_prop_t prop,
-                                 void *key, size_t size, void *identity_ptr,
-                                 void *reduce_ptr) {
+__csan_llvm_reducer_register(const csi_id_t call_id, const csi_id_t func_id,
+                             unsigned MAAP_count, const call_prop_t prop,
+                             void *key, void (*reduce)(void *, void *)) {
   START_HOOK(call_id);
 
-  reducer_register(call_id, MAAP_count, key, identity_ptr, reduce_ptr);
-}
-
-CILKSAN_API void
-__csan_llvm_reducer_register_i64(const csi_id_t call_id, const csi_id_t func_id,
-                                 unsigned MAAP_count, const call_prop_t prop,
-                                 void *key, size_t size, void *identity_ptr,
-                                 void *reduce_ptr) {
-  START_HOOK(call_id);
-
-  reducer_register(call_id, MAAP_count, key, identity_ptr, reduce_ptr);
+  reducer_register(call_id, MAAP_count, key, reduce);
 }
 
 CILKSAN_API void __csan_llvm_reducer_unregister(const csi_id_t call_id,
@@ -76,12 +65,15 @@ CILKSAN_API void __csan_llvm_reducer_unregister(const csi_id_t call_id,
   check_read_bytes(call_id, MAAP_t::Ref, key, 1);
 }
 
-CILKSAN_API void *__csan_llvm_hyper_lookup(const csi_id_t call_id,
-                                           const csi_id_t func_id,
-                                           unsigned MAAP_count,
-                                           const call_prop_t prop, void *view,
-                                           void *key, size_t size,
-                                           void *identity_fn, void *reduce_fn) {
+CILKSAN_API void *
+__csan_llvm_hyper_lookup_2(const csi_id_t call_id,
+                           const csi_id_t func_id,
+                           unsigned MAAP_count,
+                           const call_prop_t prop,
+                           void *view,
+                           void *key, size_t size,
+                           void (*identity)(void *),
+                           void (*reduce)(void *, void *)) {
   if (!CILKSAN_INITIALIZED || !should_check())
     return view;
   if (__builtin_expect(!call_pc[call_id], false))
@@ -104,18 +96,19 @@ CILKSAN_API void *__csan_llvm_hyper_lookup(const csi_id_t call_id,
     }
     // Create and return a new reducer view.
     return CilkSanImpl.create_reducer_view(reducer_views, (uintptr_t)key, size,
-                                           identity_fn, reduce_fn);
+                                           identity, reduce);
   }
   return view;
 }
 
 CILKSAN_API void *
-__csan_llvm_hyper_lookup_i64(const csi_id_t call_id, const csi_id_t func_id,
-                             unsigned MAAP_count, const call_prop_t prop,
-                             void *view, void *key, size_t size,
-                             void *identity_fn, void *reduce_fn) {
-  return __csan_llvm_hyper_lookup(call_id, func_id, MAAP_count, prop, view, key,
-                                  size, identity_fn, reduce_fn);
+__csan_llvm_hyper_lookup_2_i64(const csi_id_t call_id, const csi_id_t func_id,
+                               unsigned MAAP_count, const call_prop_t prop,
+                               void *view, void *key, size_t size,
+                               void (*identity)(void *),
+                               void (*reduce)(void *, void *)) {
+  return __csan_llvm_hyper_lookup_2(call_id, func_id, MAAP_count, prop,
+                                    view, key, size, identity, reduce);
 }
 
 void CilkSanImpl_t::reduce_local_views() {

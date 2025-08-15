@@ -176,10 +176,9 @@ public:
 
   // Create a new reducer view.
   void *create_reducer_view(hyper_table *__restrict__ reducer_views,
-                            uintptr_t key, size_t size, void *identity_ptr,
-                            void *reduce_ptr) {
-    __cilk_identity_fn identity = (__cilk_identity_fn)identity_ptr;
-    __cilk_reduce_fn reduce = (__cilk_reduce_fn)reduce_ptr;
+                            uintptr_t key, size_t size,
+                            void (*identity)(void *),
+                            void (*reduce)(void *, void *)) {
 
     // Allocate and initialize a new view.  Make sure the shadow memory is clear
     // for that allocation.
