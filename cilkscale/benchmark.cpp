@@ -28,7 +28,7 @@
 #include <cilk/cilk_stub.h>
 #else // !SERIAL_TOOL
 #include <cilk/cilk.h>
-#include <cilk/ostream_reducer.h>
+#include <cilk/ostream_reducer>
 using out_reducer = cilk::ostream_reducer<char>;
 #endif // SERIAL_TOOL
 
